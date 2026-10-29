@@ -1,0 +1,34 @@
+{
+  "model": "TF-IDF mots+caractères + régression logistique",
+  "val": {
+    "accuracy": 0.9452,
+    "f1_macro": 0.9449
+  },
+  "test": {
+    "accuracy": 0.9485,
+    "f1_macro": 0.9485
+  },
+  "test_par_ecriture": {
+    "arabe": {
+      "accuracy": 0.9509,
+      "f1_macro": 0.9503
+    },
+    "arabizi": {
+      "accuracy": 0.9463,
+      "f1_macro": 0.9457
+    }
+  },
+  "confusion_matrix_test": [
+    [
+      1346,
+      55
+    ],
+    [
+      91,
+      1342
+    ]
+  ],
+  "n_train": 10848,
+  "n_val": 1205,
+  "n_test": 2834
+}

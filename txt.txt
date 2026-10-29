@@ -1,0 +1,111 @@
+# AvisDerja — analyse de sentiment des avis clients en derja tunisien
+
+Tableau de bord qui analyse automatiquement des avis clients écrits en **derja tunisien**, en écriture arabe (« الجودة باهية ») comme en **arabizi** (« el qualité behya ») : sentiment de chaque avis, thèmes mentionnés (prix, livraison, qualité, service client, conformité) et priorités à traiter.
+
+![Tableau de bord](docs/dashboard.png)
+
+## Pourquoi ce projet
+
+Les outils d'analyse de sentiment du marché comprennent l'arabe standard ou le français, mais pas le derja, encore moins écrit en lettres latines et chiffres (`3jebni`, `9adech`, `t2a5ret`). Or c'est ainsi qu'écrivent la plupart des clients tunisiens sur Facebook et dans les avis en ligne.
+
+## Résultats
+
+Modèle entraîné sur le corpus **TSAC** (commentaires Facebook en derja annotés positif/négatif), après nettoyage :
+14 conflits d'annotation et **339 doublons entre le train et le test** retirés (ils gonflaient artificiellement les scores).
+
+| Modèle | Données de test | Accuracy | F1 macro |
+|---|---|---|---|
+| TF-IDF mots + caractères + régression logistique | TSAC (2 834 commentaires) | **94,9 %** | **94,9 %** |
+| ↳ écriture arabe | | 95,1 % | 95,0 % |
+| ↳ arabizi | | 94,6 % | 94,6 % |
+| Même modèle, **hors domaine** | 55 avis e-commerce annotés à la main | 83,6 % | 83,5 % |
+| ↳ avis où le modèle est sûr (75 %) | | 95,1 % | |
+| Transformer fine-tuné (xlm-roberta-base) | TSAC | *à compléter après le notebook* | |
+
+**Ce que montrent ces chiffres :**
+- Les n-grammes de **caractères** sont essentiels : ils absorbent les variations d'orthographe du derja (`barcha` / `barsha`, `3jebni` / `3ajebni`). Mots seuls : 90 % ; mots + caractères : 95 %.
+- Le modèle perd ~11 points sur des avis e-commerce, car TSAC contient des commentaires d'émissions TV/radio (vocabulaire différent : `mrigel`, `colis`, `livreur`…).
+- Quand le modèle hésite (probabilité entre 0,35 et 0,65), l'avis est marqué **« incertain »** au lieu de forcer une réponse. Sur les avis restants, la précision remonte à 95 %.
+- Les questions courtes (« 9adech soumou? ») ne sont pas des opinions : elles sont aussi marquées « incertain ».
+
+## Architecture
+
+```
+React (Vite)  ──►  API Node.js / Express  ──►  Service NLP Python (FastAPI)
+dashboard          import CSV, thèmes,         modèle de sentiment
+                   statistiques, filtres       (baseline ou transformer)
+```
+
+- **`ml/`** : préparation des données, entraînement, évaluation et service de prédiction.
+  - `prepare_data.py` : dédoublonnage, retrait des fuites train/test, découpage train/val/test.
+  - `train_baseline.py` : TF-IDF + régression logistique, métriques par écriture, échantillon d'erreurs.
+  - `finetune_transformer.ipynb` : fine-tuning de `xlm-roberta-base` sur GPU (Google Colab).
+  - `evaluate_ecommerce.py` : évaluation hors domaine sur des avis e-commerce.
+  - `service.py` : API FastAPI `/predict`. Utilise automatiquement le transformer s'il est présent dans `models/transformer/`, sinon la baseline.
+- **`server/`** : API Node.js. Import CSV (séparateur `,` ou `;` détecté), détection des thèmes par lexique bilingue arabe/arabizi, statistiques (satisfaction, thèmes, produits, évolution mensuelle), liste filtrée et paginée.
+- **`client/`** : tableau de bord React. Test d'un avis en direct, indicateurs, thèmes cliquables pour filtrer, satisfaction par produit, évolution mensuelle.
+
+## Lancer le projet
+
+Prérequis : Python 3.10+ et Node.js 20+. Trois terminaux :
+
+**1. Service NLP**
+```bash
+cd ml
+pip install -r requirements.txt
+uvicorn service:app --port 8000
+```
+
+**2. API Node**
+```bash
+cd server
+npm install
+npm start
+```
+
+**3. Dashboard**
+```bash
+cd client
+npm install
+npm run dev
+```
+
+Ouvre http://localhost:5173 puis clique **« Charger la démo »** (60 avis fictifs d'une boutique en ligne) ou importe ton propre CSV.
+
+### Format du CSV
+Une colonne de texte obligatoire (`avis`, `commentaire`, `texte`, `text` ou `review`), et si possible `produit` et `date` (format `AAAA-MM-JJ`). Exemple : [`server/data/demo_avis.csv`](server/data/demo_avis.csv).
+
+### Tests
+```bash
+cd ml && python -m pytest        # service NLP
+cd server && npm test            # API Node (avec un faux service NLP)
+```
+
+### Réentraîner
+```bash
+cd ml
+git clone https://github.com/fbougares/TSAC.git
+python prepare_data.py --tsac TSAC
+python train_baseline.py
+python evaluate_ecommerce.py
+```
+
+### Utiliser le transformer
+1. Ouvre `ml/finetune_transformer.ipynb` dans [Google Colab](https://colab.research.google.com/) avec un GPU T4.
+2. Importe `ml/data/train.csv`, `val.csv`, `test.csv`, puis *Exécution › Tout exécuter* (~15 min).
+3. Décompresse `transformer.zip` dans `ml/models/transformer/`, installe `torch` et `transformers`, relance le service : le badge du dashboard indique « Transformer ».
+
+## Limites et pistes d'amélioration
+
+- **Annoter des avis e-commerce réels** (quelques centaines) et fine-tuner dessus : c'est le levier principal pour réduire l'écart hors domaine.
+- Ajouter une vraie classe **neutre** au lieu de la zone « incertain ».
+- Remplacer le lexique des thèmes par une classification **multi-label** apprise, ou par l'analyse de sentiment **par aspect** (ABSA) : « livraison lente mais produit top » = livraison négatif, qualité positif.
+- Gérer le sarcasme et les avis mitigés (`ama` / « mais »).
+
+## Technologies
+
+Python · scikit-learn · Hugging Face Transformers · FastAPI · Node.js · Express · React · Vite
+
+## Données
+
+Corpus TSAC (licence LGPL v3) : Medhaffar et al., *Sentiment analysis of Tunisian dialects: Linguistic Resources and Experiments*, WANLP 2017. Les avis de démonstration et d'évaluation e-commerce sont fictifs.

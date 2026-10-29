@@ -1,0 +1,11 @@
+# Service + baseline
+scikit-learn==1.9.1   # même version que celle qui a créé models/baseline.joblib (sinon : python train_baseline.py)
+pandas
+joblib
+fastapi
+uvicorn
+pytest
+httpx
+# Seulement si tu utilises le transformer fine-tuné en local :
+# torch
+# transformers
